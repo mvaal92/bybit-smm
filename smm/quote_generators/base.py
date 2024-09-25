@@ -4,6 +4,7 @@ from numpy.typing import NDArray
 import numpy as np
 from smm.sharedstate import SmmSharedState
 from frameworks.tools.trading.rounding import round_ceil, round_floor
+from frameworks.exchange.base.structures.order import Order
 
 
 class QuoteGenerator(ABC):
