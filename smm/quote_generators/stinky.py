@@ -1,35 +1,59 @@
-from typing import Dict, List, Union
+from typing import List, Union
 
 from frameworks.tools.logging import time_ms
 from frameworks.tools.numba import nbgeomspace
 from frameworks.tools.trading.weights import generate_geometric_weights
-from smm.quote_generators.base import QuoteGenerator
 from smm.sharedstate import SmmSharedState
+from smm.quote_generators.base import (
+    QuoteGenerator, 
+    Side, 
+    TimeInForce, 
+    OrderType, 
+    Order,
+    Position
+)
 
 
 class StinkyQuoteGenerator(QuoteGenerator):
     """
-    This strategy's breakdown can be found in quote_generators.md
+    This strategy's breakdown can be found in [smm/quote_generators/README.md]
     """
     def __init__(self, ss: SmmSharedState) -> None:
         super().__init__(ss)
         
-        self.local_position = {}
+        self.local_position = Position()
         self.local_position_time = 0.0
 
-    def generate_stinky_orders(self) -> List[Dict]:
+    def generate_stinky_orders(self) -> List[Order]:
         """
         Generate deep orders in a range from the base spread to base^1.5 away from mid.
 
-        This method generates a series of bid and ask orders based on geometric spreads 
-        and sizes, ranging from base spread to a spread raised to the power of 1.5.
+        Steps
+        -----
+        1. Convert the base spread from basis points to a decimal.
+        2. Generate geometric sequences for spreads and sizes:
+            a. The spreads range from the base spread to the base spread raised to the power of 1.5.
+            b. The sizes are generated using geometric weights.
+        3. For each spread and size pair:
+            a. Calculate the bid price by subtracting the spread from the mid-price.
+            b. Calculate the ask price by adding the spread to the mid-price.
+        4. Generate and append a bid order:
+            a. Use the calculated bid price and size.
+            b. Assign a client order ID with the level suffix.
+        5. Generate and append an ask order:
+            a. Use the calculated ask price and size.
+            b. Assign a client order ID with the level suffix.
+
+        Parameters
+        ----------
+        None
 
         Returns
         -------
-        List[Dict]
-            A list of single quotes.
+        List[Order]
+            A list of orders.
         """
-        orders = []
+        orders: List[Order] = []
         level = 0
 
         spreads = nbgeomspace(
@@ -48,8 +72,9 @@ class StinkyQuoteGenerator(QuoteGenerator):
 
             orders.append(
                 self.generate_single_quote(
-                    side=0,
-                    orderType=0,
+                    side=Side.BUY,
+                    orderType=OrderType.LIMIT,
+                    timeInForce=TimeInForce.POST_ONLY,
                     price=self.round_bid(bid_price),
                     size=self.round_size(size),
                     clientOrderId=self.orderid.generate_order_id(end=str_level)
@@ -58,17 +83,18 @@ class StinkyQuoteGenerator(QuoteGenerator):
 
             orders.append(
                 self.generate_single_quote(
-                    side=1,
-                    orderType=0,
-                    price=self.round_ask(ask_price),
+                    side=Side.SELL,
+                    orderType=OrderType.LIMIT,
+                    timeInForce=TimeInForce.POST_ONLY,
+                    price=self.round_bid(ask_price),
                     size=self.round_size(size),
                     clientOrderId=self.orderid.generate_order_id(end=str_level)
                 )
             )
+
         return orders
 
-
-    def position_executor(self, max_duration: float=5.0) -> List[Union[Dict, None]]:
+    def position_executor(self, max_duration: float=10.0) -> List[Union[Order, None]]:
         """
         Purge a position if its duration exceeds a value.
 
@@ -89,12 +115,12 @@ class StinkyQuoteGenerator(QuoteGenerator):
 
         Returns
         -------
-        List[Union[Dict, None]]
-            A list containing a single taker order, or an empty list if no order is generated.
+        List[Union[Order, None]]
+            A list containing either a single taker order, or an empty list if no order is generated.
         """
-        order = []
+        order: List[Union[Order, None]] = []
 
-        if self.data["position"].get("size", 0.0) != 0.0:
+        if not self.data["position"].is_empty:
             if not self.local_position:
                 self.local_position.update(self.data["position"])
                 self.local_position_time = time_ms()
@@ -104,19 +130,17 @@ class StinkyQuoteGenerator(QuoteGenerator):
             
                 if max_duration_ms < time_ms():
                     order.append(self.generate_single_quote(
-                        side=1 if self.data["position"]["size"] > 0.0 else 0,    
-                        orderType=1,
-                        price=self.mid_price, # NOTE: Ignored value for takers
-                        size=self.data["position"]["size"],
-                        clientOrderId=self.orderid.generate_order_id(end="00")
+                        side=Side.SELL if self.data["position"].size > 0.0 else Side.BUY,    
+                        orderType=OrderType.MARKET,
+                        timeInForce=TimeInForce.GTC,
+                        size=self.data["position"].size,
+                        clientOrderId=self.orderid.generate_order_id(end="99")
                     ))
 
-                self.local_position.clear()
+                self.local_position.reset()
                 self.local_position_time = 0.0
             
         return order
 
-    def generate_orders(self, fp_skew: float, vol: float) -> List[Dict]:
-        position_orders = self.position_executor() or []  # Use an empty list if None
-        stinky_orders = self.generate_stinky_orders() or []  # Use an empty list if None
-        return position_orders + stinky_orders
+    def generate_orders(self, fp_skew: float, vol: float) -> List[Order]:
+        return self.position_executor() + self.generate_stinky_orders()

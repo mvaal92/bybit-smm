@@ -1,7 +1,7 @@
 
 # "Binance", "Bybit", "Hyperliquid", ...
 exchange: "Bybit"
-symbol: "SOLUSDT"
+symbol: "WIFUSDT"
 
 # "plain", "stinky" ,...
 quote_generator: "stinky"
@@ -18,7 +18,7 @@ parameters:
 
   stinky:
     base_spread: 15
-    total_orders: 10            # Consider your rate limits!
+    total_orders: 5            # Consider your rate limits!
     max_position: 2           # Value in $ (USD)
     minimum_spread: 40          # Value in BPS (Basis Points)
     maximum_spread: 250         # Value in BPS (Basis Points)
