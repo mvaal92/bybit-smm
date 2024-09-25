@@ -1,11 +1,16 @@
-import asyncio
+import sys
 import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import asyncio
 import yaml
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Dict
 from numpy_ringbuffer import RingBuffer
+from dotenv import load_dotenv
 
+# Load environment variables from a .env file
 from frameworks.tools.logging import Logger
 from frameworks.exchange.base.exchange import Exchange
 from frameworks.exchange.base.websocket import WebsocketStream
@@ -67,8 +72,7 @@ class SharedState(ABC):
         }
 
         self.logging = Logger(
-            print_to_console=True,
-            discord_webhook=""
+            debug_mode=False
         )
         self.param_path = self.set_parameters_path()
         self.load_config()
@@ -196,11 +200,13 @@ class SharedState(ABC):
         Exception
             If the API credentials are missing or incorrect.
         """
+        load_dotenv()
+
         self.api_key = os.getenv("API_KEY")
         self.api_secret = os.getenv("API_SECRET")
             
         if not self.api_key or not self.api_secret:
-            raise Exception("Missing/incorrect API credentials!")
+            raise ValueError("Missing or incorrect API credentials!")
             
     def load_parameters(self, reload: bool=False) -> None:
         """

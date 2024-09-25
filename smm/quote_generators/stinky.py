@@ -65,6 +65,8 @@ class StinkyQuoteGenerator(QuoteGenerator):
                     clientOrderId=self.orderid.generate_order_id(end=str_level)
                 )
             )
+        return orders
+
 
     def position_executor(self, max_duration: float=5.0) -> List[Union[Dict, None]]:
         """
@@ -92,7 +94,7 @@ class StinkyQuoteGenerator(QuoteGenerator):
         """
         order = []
 
-        if self.data["position"].get(["size"], 0.0) != 0.0:
+        if self.data["position"].get("size", 0.0) != 0.0:
             if not self.local_position:
                 self.local_position.update(self.data["position"])
                 self.local_position_time = time_ms()
@@ -115,4 +117,6 @@ class StinkyQuoteGenerator(QuoteGenerator):
         return order
 
     def generate_orders(self, fp_skew: float, vol: float) -> List[Dict]:
-        return self.position_executor() + self.generate_stinky_orders()
+        position_orders = self.position_executor() or []  # Use an empty list if None
+        stinky_orders = self.generate_stinky_orders() or []  # Use an empty list if None
+        return position_orders + stinky_orders

@@ -19,6 +19,7 @@ from smm.sharedstate import SmmSharedState
 
     
 async def main():
+    ss = None
     try:
         ss = SmmSharedState()
         trading_logic = TradingLogic(ss)

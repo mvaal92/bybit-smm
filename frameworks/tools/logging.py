@@ -33,6 +33,8 @@ class Logger:
         self,
         debug_mode: bool = False,
     ) -> None:
+        self.print_to_console = debug_mode
+
         self.debug_mode = debug_mode
 
         self.discord_client = None
@@ -66,10 +68,10 @@ class Logger:
         -------
         None
         """
-        formatted_msg = f"{time_now()} | {level} | {msg}"
-
         if self.print_to_console:
-            print(formatted_msg)
+            print(f"{level}: {msg}")
+
+        formatted_msg = f"{time_now()} | {level} | {msg}"
 
         if self.send_to_discord:
             task = asyncio.create_task(self.discord_client.send(formatted_msg))

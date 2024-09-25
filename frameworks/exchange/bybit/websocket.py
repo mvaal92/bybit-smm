@@ -2,6 +2,9 @@ import asyncio
 import hmac
 import hashlib
 from typing import Tuple, Dict, List
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from frameworks.tools.logging import time_ms
 from frameworks.exchange.base.websocket import WebsocketStream
@@ -76,17 +79,6 @@ class BybitWebsocket(WebsocketStream):
         ]
         return (self.endpoints.public_ws.url, request)
 
-    async def public_stream_handler(self, recv: Dict) -> None:
-        try:
-            topic = recv["topic"].split(".")[0]
-            self.public_handler_map[topic].process(recv)
-
-        except KeyError as ke:
-            if "success" not in recv:
-                raise ke
-
-        except Exception as e:
-            await self.logging.error(f"Error with Bybit public ws handler: {e}")
 
     def private_stream_sub(self) -> Tuple[str, List[Dict]]:
         expiry_time = time_ms() + 5000
@@ -116,14 +108,41 @@ class BybitWebsocket(WebsocketStream):
 
     async def private_stream_handler(self, recv: Dict) -> None:
         try:
-            self.private_handler_map[recv["topic"]].process(recv)
-
-        except KeyError as ke:
-            if "success" not in recv:
-                raise ke
+            if "op" in recv and recv["op"] == "auth":
+                # Handle authentication response
+                if recv.get("success"):
+                    await self.logging.info("Bybit private ws authentication successful")
+                else:
+                    await self.logging.error(f"Bybit private ws authentication failed: {recv.get('ret_msg')}")
+            elif "topic" in recv:
+                # Handle regular data messages
+                topic = recv["topic"]
+                if topic in self.private_handler_map:
+                    self.private_handler_map[topic].process(recv)
+                else:
+                    await self.logging.warning(f"Unhandled topic in Bybit private ws: {topic}")
+            elif "ret_msg" in recv and recv["ret_msg"] == "OK":
+                # This is likely an authentication response
+                await self.logging.info("Bybit private ws authentication successful")
+            else:
+                await self.logging.warning(f"Unexpected message format in Bybit private ws: {recv}")
 
         except Exception as e:
-            await self.logging.error(f"Error with Bybit public ws handler: {e}")
+            await self.logging.error(f"Error in Bybit private ws handler: {e}")
+
+    async def public_stream_handler(self, recv: Dict) -> None:
+        try:
+            if "topic" in recv:
+                topic = recv["topic"].split(".")[0]  # Extract the main topic
+                if topic in self.public_handler_map:
+                    self.public_handler_map[topic].process(recv)
+                else:
+                    await self.logging.warning(f"Unhandled topic in Bybit public ws: {topic}")
+            else:
+                await self.logging.warning(f"Unexpected message format in Bybit public ws: {recv}")
+        except Exception as e:
+            await self.logging.error(f"Error in Bybit public ws handler: {e}")
+
 
     async def start_public_stream(self) -> None:
         """
