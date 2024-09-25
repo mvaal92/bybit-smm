@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Dict, Union
 from numpy.typing import NDArray
-
+import numpy as np
 from smm.sharedstate import SmmSharedState
 from frameworks.tools.trading.rounding import round_ceil, round_floor
 
@@ -24,6 +24,7 @@ class QuoteGenerator(ABC):
         ss : SmmSharedState
             An instance of SmmSharedState containing shared state information.
         """
+        self.symbol = ss.symbol
         self.data = ss.data
         self.params = ss.parameters
         self.orderid = ss.exchange.orderid
@@ -53,25 +54,25 @@ class QuoteGenerator(ABC):
         return self.data["orderbook"].get_wmid()
 
     @property
-    def live_best_bid(self) -> NDArray:
+    def live_best_bid(self) -> np.ndarray:
         """
         Returns the live best bid from the order book.
 
         Returns
         -------
-        NDArray
+        np.ndarray
             The live best bid from the order book.
         """
         return self.data["orderbook"].bba[0]
 
     @property
-    def live_best_ask(self) -> NDArray:
+    def live_best_ask(self) -> np.ndarray:
         """
         Returns the live best ask from the order book.
 
         Returns
         -------
-        NDArray
+        np.ndarray
             The live best ask from the order book.
         """
         return self.data["orderbook"].bba[1]
@@ -129,11 +130,11 @@ class QuoteGenerator(ABC):
         float
             The equivalent decimal value.
         """
-        return bps / 10000
+        return bps / 10000.0
 
-    def bps_offset_to_decimal(self, bps: float) -> float:
+    def bps_offset_from_mid(self, bps: float) -> float:
         """
-        Converts basis points offset from midprice to decimal.
+        Converts basis points offset from midprice to decimal price.
 
         Parameters
         ----------
@@ -230,43 +231,48 @@ class QuoteGenerator(ABC):
         return round_ceil(num=size, step_size=self.data["lot_size"])
   
     def generate_single_quote(
-        self, side: int, orderType: int, price: float, size: float, clientOrderId: Union[str, int]
-    ) -> Dict:
+        self, side: int, orderType: int, timeInForce: int, price: float, size: float, clientOrderId: str
+    ) -> Order:
         """
-        Generates a single quote dictionary.
+        Generates a single quote order.
 
         Parameters
         ----------
         side : int
-            The side of the order.
-            
+            The side of the order, either buy or sell.
+
         orderType : int
-            The type of the order.
-            
+            The type of the order, such as limit or market.
+
+        timeInForce : int
+            The time in force for the order.
+
         price : float
             The price of the order.
 
         size : float
             The size of the order.
 
-        clientOrderId: Union[str, int]
+        clientOrderId: str
             The custom order ID.
-            
+
         Returns
         -------
-        dict
-            A dictionary representing the quote.
+        Order
+            An Order object representing the quote.
         """
-        return {
-            "side": side,
-            "orderType": orderType,
-            "price": price,
-            "size": size,
-            "clientOrderId": clientOrderId,
-        }
-
+        return Order(
+            symbol=self.symbol,
+            side=side,
+            orderType=orderType,
+            timeInForce=timeInForce,
+            price=price,
+            size=size,
+            clientOrderId=clientOrderId
+        )
+    
     @abstractmethod
-    def generate_orders(self, fp_skew: float, vol: float) -> List[Dict]:
+    def generate_orders(self, fp_skew: float, vol: float) -> List[Order]:
         """
         Generates a list of orders based on the strategy.
 
@@ -285,7 +291,7 @@ class QuoteGenerator(ABC):
 
         Returns
         -------
-        List[Dict]
+        List[Order]
             A list of orders to be placed.
         """
         pass
